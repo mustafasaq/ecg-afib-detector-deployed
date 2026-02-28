@@ -239,9 +239,8 @@ async def predict_stream(files: list[UploadFile] = File(...)):
             total = len(starts)
             yield f"data: {json.dumps({'type':'init','total':total})}\n\n"
 
-            BATCH = 64
+            BATCH = 256
             all_preds, all_probs = [], []
-            # per-model running AF window count
             model_af_counts = [0] * len(models)
 
             for bs in range(0, total, BATCH):
@@ -250,34 +249,32 @@ async def predict_stream(files: list[UploadFile] = File(...)):
                 rr_b = rr_t[bs:be]
                 rv_b = rv_t[bs:be]
 
-                # Get individual model probabilities
                 with torch.no_grad():
                     per_model_probs = []
                     for m in models:
                         p = F.softmax(m(X_b, rr_b, rv_b), dim=1)[:, 1].cpu().numpy()
-                        per_model_probs.append([round(float(x), 4) for x in p])
+                        per_model_probs.append(p)
 
-                avg   = np.mean([np.array(p) for p in per_model_probs], axis=0)
+                # Vectorized averaging and conversion
+                avg   = np.mean(per_model_probs, axis=0)
                 preds = (avg >= 0.5).astype(int).tolist()
-                probs = [round(float(p), 4) for p in avg]
+                probs = np.round(avg, 4).tolist()
+                
                 all_preds.extend(preds)
                 all_probs.extend(probs)
 
-                # Accumulate per-model AF counts
+                # Vectorized summary stats
+                model_summary = []
                 for mi, mp in enumerate(per_model_probs):
-                    model_af_counts[mi] += sum(1 for p in mp if p >= 0.5)
-
-                # Compute batch-level per-model summary (avg prob this batch, af vote rate so far)
-                model_summary = [
-                    {
-                        "batch_avg_prob": round(float(np.mean(per_model_probs[mi])), 4),
-                        "running_af_pct": round(model_af_counts[mi] / be * 100, 1),
-                    }
-                    for mi in range(len(models))
-                ]
-
+                    model_af_counts[mi] += int((mp >= 0.5).sum())
+                    model_summary.append({
+                        "batch_avg_prob": float(np.round(mp.mean(), 4)),
+                        "running_af_pct": round(model_af_counts[mi] / be * 100, 1)
+                    })
+                    # Also replace mp with rounded lists to send in JSON (optional, but requested in progress structure if frontend expects raw probs per model, wait, the frontend doesn't need them per model, it only needs the total probs, so per_model_probs don't need rounding except for display which isn't used)
+                    
                 yield f"data: {json.dumps({'type':'progress','processed':be,'total':total,'probs':probs,'preds':preds,'batch_start':bs,'model_summary':model_summary})}\n\n"
-                await asyncio.sleep(0)  # yield to event loop so the chunk flushes immediately
+                await asyncio.sleep(0)
 
             af  = int(sum(all_preds))
             pct = round(af / total * 100, 2) if total else 0.0
@@ -381,7 +378,7 @@ async def predict_sample_stream(record_id: str):
             total = len(starts)
             yield f"data: {json.dumps({'type':'init','total':total})}\n\n"
 
-            BATCH = 64
+            BATCH = 256
             all_preds, all_probs = [], []
             model_af_counts = [0] * len(models)
 
@@ -393,24 +390,22 @@ async def predict_sample_stream(record_id: str):
                     per_model_probs = []
                     for m in models:
                         p = F.softmax(m(X_b, rr_b, rv_b), dim=1)[:, 1].cpu().numpy()
-                        per_model_probs.append([round(float(x), 4) for x in p])
+                        per_model_probs.append(p)
 
-                avg   = np.mean([np.array(p) for p in per_model_probs], axis=0)
+                avg   = np.mean(per_model_probs, axis=0)
                 preds = (avg >= 0.5).astype(int).tolist()
-                probs = [round(float(p), 4) for p in avg]
+                probs = np.round(avg, 4).tolist()
+                
                 all_preds.extend(preds)
                 all_probs.extend(probs)
 
+                model_summary = []
                 for mi, mp in enumerate(per_model_probs):
-                    model_af_counts[mi] += sum(1 for p in mp if p >= 0.5)
-
-                model_summary = [
-                    {
-                        "batch_avg_prob": round(float(np.mean(per_model_probs[mi])), 4),
-                        "running_af_pct": round(model_af_counts[mi] / be * 100, 1),
-                    }
-                    for mi in range(len(models))
-                ]
+                    model_af_counts[mi] += int((mp >= 0.5).sum())
+                    model_summary.append({
+                        "batch_avg_prob": float(np.round(mp.mean(), 4)),
+                        "running_af_pct": round(model_af_counts[mi] / be * 100, 1)
+                    })
 
                 yield f"data: {json.dumps({'type':'progress','processed':be,'total':total,'probs':probs,'preds':preds,'batch_start':bs,'model_summary':model_summary})}\n\n"
                 await asyncio.sleep(0)
