@@ -1,11 +1,12 @@
 .venv/
 __pycache__/
 *.pyc
-data/raw/
-data/processed/
-data/models/
+data/
+artifacts/
+results/
 reports/
 .DS_Store
 .ipynb_checkpoints/
 webapp/backend/tmp_ecg/
 .cursor
+git 
