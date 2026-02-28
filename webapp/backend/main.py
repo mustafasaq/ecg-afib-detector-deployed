@@ -117,21 +117,37 @@ TOP_5_MODELS = [
 
 def load_model():
     global models, rr_mean, rr_scale
-    results_dir = Path("../../results")
+    
+    # Try deployment 'models' folder first, then local 'results' folder
+    models_dir = Path(__file__).parent / "models"
+    results_dir = Path(__file__).parent / "../../../results"
+    
+    search_dirs = [models_dir, results_dir]
+    
     models = []
     for filename in TOP_5_MODELS:
-        p = results_dir / filename
-        if not p.exists():
-            print(f"Skipping {filename}: not found")
+        p = None
+        for d in search_dirs:
+            if (d / filename).exists():
+                p = d / filename
+                break
+                
+        if not p:
+            print(f"Skipping {filename}: not found in expected directories")
             continue
-        ckpt = torch.load(p, map_location=device, weights_only=True)
-        m = ECGNetRR(rr_dim=ckpt.get("rr_dim", 10))
-        m.load_state_dict(ckpt["model_state"])
-        m.to(device).eval()
-        models.append(m)
-        rr_mean  = ckpt.get("rr_mean",  np.zeros(10))
-        rr_scale = ckpt.get("rr_scale", np.ones(10))
-        print(f"Loaded {filename}")
+            
+        try:
+            ckpt = torch.load(p, map_location=device, weights_only=True)
+            m = ECGNetRR(rr_dim=ckpt.get("rr_dim", 10))
+            m.load_state_dict(ckpt["model_state"])
+            m.to(device).eval()
+            models.append(m)
+            rr_mean  = ckpt.get("rr_mean",  np.zeros(10))
+            rr_scale = ckpt.get("rr_scale", np.ones(10))
+            print(f"Loaded {filename}")
+        except Exception as e:
+            print(f"Error loading {filename}: {e}")
+            
     return bool(models)
 
 @app.on_event("startup")
