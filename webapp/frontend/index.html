@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECGmapper – AFib Detection</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #0b1220;
+            --text: #c9daea;
+            --dim: #4a6a85;
+            --line: #1a2f4a;
+            --teal: #00c9a7;
+            --red: #ff4d6d;
+            --amber: #f59e0b;
+        }
+
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100%;
+        }
+
+        /* ── App shell: header + two-col body ── */
+        .app {
+            display: grid;
+            grid-template-rows: 44px 1fr;
+            height: 100vh;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* ── Top bar ── */
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--line);
+            padding: 0 1.5rem;
+        }
+
+        .brand {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #e8f4fd;
+        }
+
+        .brand span {
+            color: var(--teal);
+        }
+
+        .tagline {
+            font-size: 0.72rem;
+            color: var(--dim);
+        }
+
+        /* ── Two columns ── */
+        .cols {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            overflow: hidden;
+        }
+
+        /* ── Left panel ── */
+        .left {
+            border-right: 1px solid var(--line);
+            padding: 0.75rem 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .section-label {
+            font-size: 0.62rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--dim);
+            margin-bottom: 0.4rem;
+        }
+
+        /* Drop zones */
+        .dz {
+            border: 1px dashed var(--line);
+            border-radius: 0.5rem;
+            padding: 0.55rem 0.6rem;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            margin-bottom: 0.35rem;
+        }
+
+        .dz:last-of-type {
+            margin-bottom: 0;
+        }
+
+        .dz:hover {
+            border-color: var(--teal);
+            background: rgba(0, 201, 167, 0.04);
+        }
+
+        .dz.over {
+            border-color: var(--teal);
+            background: rgba(0, 201, 167, 0.06);
+        }
+
+        .dz.ready {
+            border-style: solid;
+            border-color: var(--teal);
+        }
+
+        .dz input {
+            display: none;
+        }
+
+        .dz-ext {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--teal);
+            margin-bottom: 0.1rem;
+        }
+
+        .dz-name {
+            font-size: 0.67rem;
+            color: var(--dim);
+            margin-bottom: 0.3rem;
+        }
+
+        .dz-st {
+            font-size: 0.68rem;
+            color: var(--dim);
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--line);
+            border-radius: 0.3rem;
+            padding: 0.25rem 0.5rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .dz.ready .dz-st {
+            color: var(--teal);
+            border-color: rgba(0, 201, 167, 0.25);
+        }
+
+        /* Buttons */
+        .btn-run {
+            width: 100%;
+            padding: 0.45rem;
+            border: none;
+            border-radius: 0.4rem;
+            background: var(--teal);
+            color: #06101e;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            margin-bottom: 0.3rem;
+        }
+
+        .btn-run:hover:not(:disabled) {
+            opacity: 0.85;
+        }
+
+        .btn-run:disabled {
+            background: var(--line);
+            color: var(--dim);
+            cursor: not-allowed;
+        }
+
+        .btn-clear {
+            width: 100%;
+            padding: 0.35rem;
+            border: 1px solid var(--line);
+            border-radius: 0.4rem;
+            background: transparent;
+            color: var(--dim);
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: color 0.2s, border-color 0.2s;
+        }
+
+        .btn-clear:hover {
+            color: var(--red);
+            border-color: var(--red);
+        }
+
+        /* Model list (left panel) */
+        .model-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .model-item {
+            padding: 0.45rem 0;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .model-item:first-child {
+            border-top: 1px solid var(--line);
+        }
+
+        .model-item-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.2rem;
+        }
+
+        .model-item-name {
+            font-size: 0.8rem;
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .model-item-vote {
+            font-size: 0.68rem;
+            font-weight: 600;
+            padding: 0.12rem 0.45rem;
+            border-radius: 99px;
+        }
+
+        .model-item-vote.idle {
+            color: var(--dim);
+            background: var(--line);
+        }
+
+        .model-item-vote.af {
+            color: var(--red);
+            background: rgba(255, 77, 109, 0.12);
+        }
+
+        .model-item-vote.normal {
+            color: var(--teal);
+            background: rgba(0, 201, 167, 0.1);
+        }
+
+        .model-item-sub {
+            font-size: 0.65rem;
+            color: var(--dim);
+            margin-bottom: 0.45rem;
+        }
+
+        .model-mbar-track {
+            height: 4px;
+            background: var(--line);
+            border-radius: 99px;
+            overflow: hidden;
+        }
+
+        .model-mbar-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 99px;
+            background: var(--teal);
+            transition: width 0.3s ease, background 0.3s;
+        }
+
+        .model-mbar-fill.high {
+            background: var(--red);
+        }
+
+        /* ── Right panel ── */
+        .right {
+            padding: 1.25rem 1.5rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.1rem;
+        }
+
+        /* Empty state */
+        #emptyState {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--dim);
+            text-align: center;
+            gap: 0.4rem;
+        }
+
+        #emptyState svg {
+            opacity: 0.15;
+        }
+
+        #emptyState p {
+            font-size: 0.78rem;
+        }
+
+        /* Analysis content */
+        #analysisContent {
+            display: none;
+        }
+
+        /* Progress */
+        .prog-area {}
+
+        .prog-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .prog-title {
+            font-size: 0.68rem;
+            color: var(--dim);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .prog-count {
+            font-size: 0.68rem;
+            color: var(--teal);
+            font-weight: 500;
+        }
+
+        .prog-track {
+            height: 2px;
+            background: var(--line);
+            border-radius: 99px;
+            overflow: hidden;
+        }
+
+        .prog-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--teal), #2f80ed);
+            border-radius: 99px;
+            transition: width 0.2s ease;
+        }
+
+        /* Stats row */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0;
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
+            padding: 0.7rem 0;
+        }
+
+        .stat-item {
+            padding: 0 1rem;
+            border-right: 1px solid var(--line);
+        }
+
+        .stat-item:first-child {
+            padding-left: 0;
+        }
+
+        .stat-item:last-child {
+            border-right: none;
+        }
+
+        .stat-item-lbl {
+            font-size: 0.6rem;
+            color: var(--dim);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.2rem;
+        }
+
+        .stat-item-val {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #e8f4fd;
+            line-height: 1;
+        }
+
+        .stat-item-val.af {
+            color: var(--red);
+        }
+
+        .stat-item-val.ok {
+            color: var(--teal);
+        }
+
+        .stat-item-val.pct {
+            color: var(--amber);
+        }
+
+        /* Chart area */
+        .chart-area {}
+
+        .chart-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .chart-title {
+            font-size: 0.65rem;
+            color: var(--dim);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .chart-legend {
+            display: flex;
+            gap: 0.75rem;
+            font-size: 0.62rem;
+            color: var(--dim);
+        }
+
+        .cdot {
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 1px;
+            margin-right: 3px;
+            vertical-align: middle;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+        }
+
+        /* Diagnosis */
+        #diag {
+            display: none;
+        }
+
+        .diag-line {
+            height: 2px;
+            border-radius: 1px;
+            margin-bottom: 1rem;
+        }
+
+        #diag.afib .diag-line {
+            background: var(--red);
+        }
+
+        #diag.normal .diag-line {
+            background: var(--teal);
+        }
+
+        .diag-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        #diagTitle {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        #diag.afib #diagTitle {
+            color: var(--red);
+        }
+
+        #diag.normal #diagTitle {
+            color: var(--teal);
+        }
+
+        #diagSub {
+            font-size: 0.78rem;
+            color: var(--dim);
+            margin-top: 0.3rem;
+            line-height: 1.6;
+        }
+
+        .diag-pct-val {
+            font-size: 2rem;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        #diag.afib .diag-pct-val {
+            color: var(--red);
+        }
+
+        #diag.normal .diag-pct-val {
+            color: var(--teal);
+        }
+
+        /* Sample record buttons */
+        .sample-btn {
+            display: block;
+            width: 100%;
+            padding: 0.4rem 0.6rem;
+            border: 1px solid var(--line);
+            border-radius: 0.4rem;
+            background: transparent;
+            color: var(--text);
+            text-align: left;
+            cursor: pointer;
+            margin-bottom: 0.3rem;
+            transition: border-color 0.2s, background 0.2s;
+            font-family: inherit;
+        }
+
+        .sample-btn:hover {
+            border-color: var(--teal);
+            background: rgba(0, 201, 167, 0.04);
+        }
+
+        .sample-btn:last-child {
+            margin-bottom: 0;
+        }
+
+        .sample-btn .sb-label {
+            font-size: 0.78rem;
+            font-weight: 500;
+        }
+
+        .sample-btn .sb-desc {
+            font-size: 0.62rem;
+            color: var(--dim);
+            margin-top: 0.15rem;
+        }
+
+        .sample-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .or-divider {
+            text-align: center;
+            font-size: 0.58rem;
+            color: var(--dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin: 0.1rem 0;
+        }
+
+        /* Disclaimer */
+        .disclaimer {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            max-width: 320px;
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 0.4rem;
+            padding: 0.6rem 0.8rem;
+            font-size: 0.62rem;
+            line-height: 1.5;
+            color: #f59e0b;
+            z-index: 100;
+        }
+
+        .disclaimer strong {
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="app">
+
+        <!-- Top bar -->
+        <div class="topbar">
+            <div class="brand">ECG<span>mapper</span></div>
+            <div class="tagline">AI-Powered Atrial Fibrillation Detection</div>
+        </div>
+
+        <!-- Columns -->
+        <div class="cols">
+
+            <!-- LEFT: upload + models -->
+            <div class="left">
+
+                <!-- Sample records -->
+                <div>
+                    <div class="section-label">Sample Records</div>
+                    <button class="sample-btn" data-id="04015">
+                        <div class="sb-label">Patient 04015</div>
+                        <div class="sb-desc">Predominantly normal (~0.6% AFib)</div>
+                    </button>
+                    <button class="sample-btn" data-id="04043">
+                        <div class="sb-label">Patient 04043</div>
+                        <div class="sb-desc">Moderate AFib episodes (~21%)</div>
+                    </button>
+                    <button class="sample-btn" data-id="04936">
+                        <div class="sb-label">Patient 04936</div>
+                        <div class="sb-desc">Heavy AFib burden (~81%)</div>
+                    </button>
+                </div>
+
+                <div class="or-divider">— or upload your own —</div>
+
+                <!-- Upload -->
+                <div>
+                    <div class="section-label">Upload ECG</div>
+                    <div class="dz" id="dzHea">
+                        <input type="file" id="inHea" accept=".hea">
+                        <div class="dz-ext">.hea</div>
+                        <div class="dz-name">Header file</div>
+                        <div class="dz-st" id="stHea">Click or drag here</div>
+                    </div>
+                    <div class="dz" id="dzDat">
+                        <input type="file" id="inDat" accept=".dat">
+                        <div class="dz-ext">.dat</div>
+                        <div class="dz-name">Signal file</div>
+                        <div class="dz-st" id="stDat">Click or drag here</div>
+                    </div>
+                    <div style="margin-top:0.4rem;">
+                        <button class="btn-run" id="runBtn" disabled>Run Analysis</button>
+                        <button class="btn-clear" id="clearBtn">Clear</button>
+                    </div>
+                </div>
+
+                <!-- Models -->
+                <div>
+                    <div class="section-label">Ensemble Models</div>
+                    <div class="model-list" id="modelList">
+                        <!-- Built by JS -->
+                    </div>
+                </div>
+
+            </div><!-- /left -->
+
+            <!-- RIGHT: analysis -->
+            <div class="right">
+
+                <div id="emptyState">
+                    <svg width="56" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 56 40"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="2,20 10,20 14,20 18,8 22,32 26,12 30,28 34,20 40,20 44,20 48,20 54,20" />
+                    </svg>
+                    <p>Upload a .hea and .dat file, or select a sample record.</p>
+                </div>
+
+                <div id="analysisContent">
+
+                    <!-- Progress -->
+                    <div class="prog-area">
+                        <div class="prog-header">
+                            <span class="prog-title">Processing</span>
+                            <span class="prog-count" id="progCount">0 / —</span>
+                        </div>
+                        <div class="prog-track">
+                            <div class="prog-fill" id="progFill"></div>
+                        </div>
+                    </div>
+
+                    <!-- Stats -->
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <div class="stat-item-lbl">Analyzed</div>
+                            <div class="stat-item-val" id="sTotal">—</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-item-lbl">AFib windows</div>
+                            <div class="stat-item-val af" id="sAfib">—</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-item-lbl">Normal windows</div>
+                            <div class="stat-item-val ok" id="sNormal">—</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-item-lbl">AFib burden</div>
+                            <div class="stat-item-val pct" id="sPct">—</div>
+                        </div>
+                    </div>
+
+                    <!-- Chart -->
+                    <div class="chart-area">
+                        <div class="chart-top">
+                            <span class="chart-title">AFib probability — per 10-second window</span>
+                            <div class="chart-legend">
+                                <span><span class="cdot" style="background:var(--red)"></span>AFib</span>
+                                <span><span class="cdot" style="background:var(--teal)"></span>Normal</span>
+                            </div>
+                        </div>
+                        <canvas id="chart" height="180"></canvas>
+                    </div>
+
+                    <!-- Diagnosis -->
+                    <div id="diag">
+                        <div class="diag-line"></div>
+                        <div class="diag-row">
+                            <div>
+                                <div id="diagTitle"></div>
+                                <div id="diagSub"></div>
+                            </div>
+                            <div class="diag-pct-val" id="diagPct"></div>
+                        </div>
+                    </div>
+
+                </div><!-- /analysisContent -->
+            </div><!-- /right -->
+
+        </div><!-- /cols -->
+    </div><!-- /app -->
+
+    <script>
+        let fileHea = null, fileDat = null;
+        let allProbs = [], allPreds = [], total = 0, afN = 0, okN = 0;
+
+        const MODEL_META = [
+            { label: 'Model 1', sub: 'Fold 04 · Patient 04126 · ROC 0.995' },
+            { label: 'Model 2', sub: 'Fold 05 · Patient 04746 · ROC 0.979' },
+            { label: 'Model 3', sub: 'Fold 07 · Patient 04936 · ROC 0.989' },
+            { label: 'Model 4', sub: 'Fold 17 · Patient 07910 · ROC 0.995' },
+            { label: 'Model 5', sub: 'Fold 22 · Patient 08434 · ROC 0.993' },
+        ];
+
+        // Build model list in left panel
+        function buildModels() {
+            document.getElementById('modelList').innerHTML = MODEL_META.map((m, i) => `
+    <div class="model-item">
+      <div class="model-item-top">
+        <span class="model-item-name">${m.label}</span>
+        <span class="model-item-vote idle" id="mv${i}">—</span>
+      </div>
+      <div class="model-item-sub">${m.sub}</div>
+      <div class="model-mbar-track"><div class="model-mbar-fill" id="mb${i}"></div></div>
+    </div>`).join('');
+        }
+        buildModels();
+
+        function updateModel(i, s) {
+            const pct = s.running_af_pct;
+            const isAf = s.batch_avg_prob >= 0.5;
+            const bar = document.getElementById('mb' + i);
+            const vote = document.getElementById('mv' + i);
+            bar.style.width = pct + '%';
+            bar.className = 'model-mbar-fill' + (pct >= 50 ? ' high' : '');
+            vote.textContent = isAf ? 'AFib' : 'Normal';
+            vote.className = 'model-item-vote ' + (isAf ? 'af' : 'normal');
+        }
+
+        // Drop zones
+        const dzHea = document.getElementById('dzHea'), dzDat = document.getElementById('dzDat');
+        const inHea = document.getElementById('inHea'), inDat = document.getElementById('inDat');
+        const stHea = document.getElementById('stHea'), stDat = document.getElementById('stDat');
+        const runBtn = document.getElementById('runBtn'), clearBtn = document.getElementById('clearBtn');
+
+        function setupDz(dz, input, ext, isHea) {
+            dz.addEventListener('click', () => input.click());
+            dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+            dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+            dz.addEventListener('drop', e => {
+                e.preventDefault(); dz.classList.remove('over');
+                const f = [...e.dataTransfer.files].find(f => f.name.endsWith(ext));
+                if (f) pick(isHea, f); else alert('Wrong file type.');
+            });
+            input.addEventListener('change', () => { if (input.files[0]) pick(isHea, input.files[0]); });
+        }
+        function pick(isHea, f) {
+            if (isHea) { fileHea = f; dzHea.classList.add('ready'); stHea.textContent = '✓ ' + f.name; }
+            else { fileDat = f; dzDat.classList.add('ready'); stDat.textContent = '✓ ' + f.name; }
+            runBtn.disabled = !(fileHea && fileDat);
+        }
+        clearBtn.addEventListener('click', () => {
+            fileHea = fileDat = null;
+            [dzHea, dzDat].forEach(d => d.classList.remove('ready'));
+            stHea.textContent = stDat.textContent = 'Click or drag here';
+            inHea.value = inDat.value = '';
+            runBtn.disabled = true;
+        });
+        setupDz(dzHea, inHea, '.hea', true);
+        setupDz(dzDat, inDat, '.dat', false);
+
+        // Canvas
+        const canvas = document.getElementById('chart');
+        const ctx = canvas.getContext('2d');
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = 180;
+        }
+        window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+
+        function draw() {
+            const W = canvas.width, H = canvas.height;
+            ctx.clearRect(0, 0, W, H);
+            if (!allProbs.length) return;
+            const pl = 0, pr = 0, pt = 8, pb = 18;
+            const cW = W - pl - pr, cH = H - pt - pb;
+            ctx.setLineDash([3, 4]);
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(pl, pt + cH * 0.5); ctx.lineTo(W - pr, pt + cH * 0.5); ctx.stroke();
+            ctx.setLineDash([]);
+            const bw = Math.max(0.8, cW / total);
+            for (let i = 0; i < allProbs.length; i++) {
+                const bh = allProbs[i] * cH;
+                ctx.fillStyle = allPreds[i] ? 'rgba(255,77,109,0.78)' : 'rgba(0,201,167,0.65)';
+                ctx.fillRect(pl + i * (cW / total), pt + cH - bh, Math.max(bw - 0.5, 0.6), bh);
+            }
+            ctx.fillStyle = '#4a6a85'; ctx.font = '9px Inter,sans-serif'; ctx.textAlign = 'center';
+            const step = Math.max(1, Math.floor(total / 8));
+            for (let i = 0; i < allProbs.length; i += step)
+                ctx.fillText(i, pl + i * (cW / total), H - 4);
+        }
+
+        // Reset
+        function reset() {
+            allProbs = []; allPreds = []; total = afN = okN = 0;
+            document.getElementById('progFill').style.width = '0%';
+            document.getElementById('progCount').textContent = '0 / —';
+            ['sTotal', 'sAfib', 'sNormal', 'sPct'].forEach(id => document.getElementById(id).textContent = '—');
+            document.getElementById('diag').style.display = 'none';
+            buildModels();
+            resizeCanvas(); ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Initial setup
+        document.getElementById('analysisContent').style.display = 'none';
+        resizeCanvas();
+
+        // Shared: process an SSE response stream
+        async function processStream(res) {
+            const reader = res.body.getReader(), dec = new TextDecoder();
+            let buf = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buf += dec.decode(value, { stream: true });
+                const parts = buf.split('\n\n'); buf = parts.pop();
+                for (const part of parts) {
+                    const line = part.trim();
+                    if (!line.startsWith('data:')) continue;
+                    let e; try { e = JSON.parse(line.slice(5).trim()) } catch { continue }
+
+                    if (e.type === 'error') { alert('Error: ' + e.message); break; }
+
+                    if (e.type === 'init') {
+                        total = e.total;
+                        document.getElementById('progCount').textContent = `0 / ${total.toLocaleString()}`;
+                        resizeCanvas();
+                    }
+
+                    if (e.type === 'progress') {
+                        for (let i = 0; i < e.probs.length; i++) { allProbs.push(e.probs[i]); allPreds.push(e.preds[i]); e.preds[i] ? afN++ : okN++; }
+                        const p = e.processed, pct = (p / total * 100).toFixed(1);
+                        document.getElementById('progFill').style.width = pct + '%';
+                        document.getElementById('progCount').textContent = `${p.toLocaleString()} / ${total.toLocaleString()}`;
+                        document.getElementById('sTotal').textContent = p.toLocaleString();
+                        document.getElementById('sAfib').textContent = afN.toLocaleString();
+                        document.getElementById('sNormal').textContent = okN.toLocaleString();
+                        document.getElementById('sPct').textContent = (afN / p * 100).toFixed(1) + '%';
+                        if (e.model_summary) e.model_summary.forEach((s, i) => updateModel(i, s));
+                        draw();
+                    }
+
+                    if (e.type === 'complete') {
+                        document.getElementById('progFill').style.width = '100%';
+                        document.getElementById('progCount').textContent = `${e.total_windows.toLocaleString()} — complete`;
+                        document.getElementById('sTotal').textContent = e.total_windows.toLocaleString();
+                        document.getElementById('sAfib').textContent = e.af_windows.toLocaleString();
+                        document.getElementById('sNormal').textContent = e.normal_windows.toLocaleString();
+                        document.getElementById('sPct').textContent = e.percent_af + '%';
+                        const isAfib = e.percent_af >= 20;
+                        const diag = document.getElementById('diag');
+                        diag.className = isAfib ? 'afib' : 'normal';
+                        document.getElementById('diagTitle').textContent = e.diagnosis;
+                        document.getElementById('diagSub').textContent = isAfib
+                            ? `${e.percent_af}% AFib burden across ${e.total_windows.toLocaleString()} windows. Clinical follow-up recommended.`
+                            : `${e.percent_af}% AFib burden — below the 20% detection threshold.`;
+                        document.getElementById('diagPct').textContent = e.percent_af + '%';
+                        diag.style.display = 'block';
+                    }
+                }
+            }
+        }
+
+        function startAnalysis() {
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('analysisContent').style.display = 'block';
+            reset();
+            // Disable all interactive buttons during analysis
+            runBtn.disabled = true;
+            document.querySelectorAll('.sample-btn').forEach(b => b.disabled = true);
+        }
+        function endAnalysis() {
+            runBtn.disabled = !(fileHea && fileDat);
+            document.querySelectorAll('.sample-btn').forEach(b => b.disabled = false);
+        }
+
+        // Upload analysis
+        runBtn.addEventListener('click', async () => {
+            startAnalysis();
+            const fd = new FormData();
+            fd.append('files', fileHea); fd.append('files', fileDat);
+            let res;
+            try { res = await fetch('/api/predict/stream', { method: 'POST', body: fd }); }
+            catch { alert('Cannot connect to backend.'); endAnalysis(); return; }
+            await processStream(res);
+            endAnalysis();
+        });
+
+        // Sample record analysis
+        document.querySelectorAll('.sample-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.dataset.id;
+                startAnalysis();
+                let res;
+                try { res = await fetch(`/api/predict/sample/stream/${id}`); }
+                catch { alert('Cannot connect to backend.'); endAnalysis(); return; }
+                await processStream(res);
+                endAnalysis();
+            });
+        });
+    </script>
+
+    <div class="disclaimer">
+        <strong>⚠ Research Prototype</strong> — This tool is for educational and research purposes only. It is not a
+        certified medical device and should not be used for clinical diagnosis. Always consult a qualified healthcare
+        professional for medical decisions.
+    </div>
+</body>
+
+</html>
